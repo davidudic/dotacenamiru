@@ -1,0 +1,157 @@
+{
+  "name": "Marketing Microsite — Orchestrated (YouTube)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-microsite",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f1a00000-0000-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-200, 300],
+      "webhookId": "marketing-microsite",
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_HEADER_AUTH_CRED_ID", "name": "Microsite Header Auth (X-N8N-Auth)" }
+      },
+      "notes": "Header Auth credential must use header name 'X-N8N-Auth'. Use the PRODUCTION webhook URL: https://<host>/webhook/marketing-microsite"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "post",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "post"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "metrics",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "metrics"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f1a00000-0000-4000-8000-000000000002",
+      "name": "Switch action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [40, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Decode the base64 video from the webhook body into n8n binary data\nconst body = $input.first().json.body;\nconst mime = body.mediaContentType || 'video/mp4';\nconst buffer = Buffer.from(body.mediaBase64, 'base64');\nconst binaryData = await this.helpers.prepareBinaryData(buffer, 'upload.mp4', mime);\nreturn [{ json: body, binary: { data: binaryData } }];"
+      },
+      "id": "f1a00000-0000-4000-8000-000000000003",
+      "name": "Base64 -> Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 180]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.title }}",
+        "categoryId": "22",
+        "binaryProperty": "data",
+        "options": {
+          "description": "={{ $json.description }}",
+          "privacyStatus": "={{ $json.privacy || 'private' }}"
+        }
+      },
+      "id": "f1a00000-0000-4000-8000-000000000004",
+      "name": "YouTube Upload",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [520, 180],
+      "credentials": {
+        "youTubeOAuth2Api": { "id": "REPLACE_YOUTUBE_OAUTH_CRED_ID", "name": "YouTube account" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"action\": \"post\", \"contentId\": $json.id, \"contentUrl\": \"https://www.youtube.com/watch?v=\" + $json.id, \"publishedAt\": ($json.snippet ? $json.snippet.publishedAt : null), \"raw\": $json } }}",
+        "options": {}
+      },
+      "id": "f1a00000-0000-4000-8000-000000000005",
+      "name": "Respond Post",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [760, 180]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={{ $json.body.contentId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "options": {}
+      },
+      "id": "f1a00000-0000-4000-8000-000000000006",
+      "name": "YouTube Statistics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 420],
+      "credentials": {
+        "youTubeOAuth2Api": { "id": "REPLACE_YOUTUBE_OAUTH_CRED_ID", "name": "YouTube account" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"action\": \"metrics\", \"raw\": $json } }}",
+        "options": {}
+      },
+      "id": "f1a00000-0000-4000-8000-000000000007",
+      "name": "Respond Metrics",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [520, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Switch action", "type": "main", "index": 0 }]] },
+    "Switch action": {
+      "main": [
+        [{ "node": "Base64 -> Binary", "type": "main", "index": 0 }],
+        [{ "node": "YouTube Statistics", "type": "main", "index": 0 }]
+      ]
+    },
+    "Base64 -> Binary": { "main": [[{ "node": "YouTube Upload", "type": "main", "index": 0 }]] },
+    "YouTube Upload": { "main": [[{ "node": "Respond Post", "type": "main", "index": 0 }]] },
+    "YouTube Statistics": { "main": [[{ "node": "Respond Metrics", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "marketing-microsite" }],
+  "meta": {
+    "description": "Orchestrated path for the Marketing Microsite. POST {action:'post'|'metrics', ...} to the Header-Auth webhook. After import: (1) create an HTTP Header Auth credential with header 'X-N8N-Auth' and attach it to the Webhook node; (2) create a YouTube OAuth2 credential and attach it to 'YouTube Upload' and 'YouTube Statistics'; (3) activate the workflow and use the PRODUCTION webhook URL."
+  }
+}

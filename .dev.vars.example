@@ -1,0 +1,21 @@
+# Local development secrets for Wrangler / nitro-cloudflare-dev.
+# Copy to `.dev.vars` (gitignored) and fill in. In production these are set with
+# `wrangler secret put <NAME>` (or via a Cloudflare Secrets Store binding) — never
+# committed.
+
+# --- YouTube (primary platform) ---
+YOUTUBE_CLIENT_ID=
+YOUTUBE_CLIENT_SECRET=
+YOUTUBE_REFRESH_TOKEN=
+
+# --- Orchestration (n8n) ---
+# Use the PRODUCTION webhook URL of an ACTIVE workflow, e.g.
+#   https://<your-n8n-host>/webhook/marketing-microsite
+N8N_WEBHOOK_URL=
+# Must match the value of the 'X-N8N-Auth' Header Auth credential in n8n.
+N8N_WEBHOOK_TOKEN=
+
+# --- Facebook Pages (optional, ready-to-enable second platform) ---
+FACEBOOK_PAGE_ID=
+FACEBOOK_PAGE_ACCESS_TOKEN=
+FACEBOOK_API_VERSION=v25.0

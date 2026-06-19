@@ -1,0 +1,29 @@
+# Cloudflare Workers deploy config for the Nuxt/Nitro (cloudflare_module) build.
+# Deploy:  npm run build  &&  npx wrangler deploy
+#
+# Secrets are NOT defined here. Set them out-of-band:
+#   npx wrangler secret put YOUTUBE_CLIENT_ID        (etc.)
+# or via Terraform `secret_text` bindings (infra/). See README + .dev.vars.example.
+#
+# KV/D1 IDs below are filled from `terraform output` (infra/). Local `nuxt dev`
+# (via nitro-cloudflare-dev) uses local simulators keyed by the binding name and
+# ignores the remote IDs, so you can develop before provisioning.
+
+name = "marketing-microsite"
+main = "./.output/server/index.mjs"
+compatibility_date = "2025-10-22"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets emitted by the Nuxt/Nitro build.
+assets = { directory = "./.output/public/", binding = "ASSETS" }
+
+# Short-lived OAuth access-token cache (refresh_token -> access_token).
+[[kv_namespaces]]
+binding = "TOKEN_CACHE"
+id = "5c66ed1f4df242b287b55088c62b588d"
+
+# Audit log of requests/results.
+[[d1_databases]]
+binding = "AUDIT_DB"
+database_name = "marketing-microsite-audit"
+database_id = "32d40777-33ab-43cc-9686-7e88cefe1ece"

@@ -1,0 +1,31 @@
+# Reproducible self-hosted n8n for the Orchestrated execution path.
+#
+#   cd orchestration && docker compose up -d
+#   open http://localhost:5678  (create the owner account, then import n8n-workflow.json)
+#
+# IMPORTANT: a DEPLOYED Cloudflare Worker cannot reach http://localhost. For the
+# live demo, expose n8n publicly — use n8n Cloud, a public VPS, or a tunnel
+# (e.g. `cloudflared tunnel --url http://localhost:5678`) and set WEBHOOK_URL to
+# that public HTTPS origin so the generated webhook URLs are correct.
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      # Public origin n8n uses to build webhook URLs (set to your tunnel/VPS URL).
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Prague}
+      - N8N_RUNNERS_ENABLED=true
+      # Persisted encryption key (n8n encrypts stored credentials with this).
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-me-in-a-real-deploy}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:

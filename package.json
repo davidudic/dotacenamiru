@@ -1,0 +1,32 @@
+{
+  "name": "marketing-microsite",
+  "private": true,
+  "type": "module",
+  "description": "Marketing microsite: publish a post to a controlled business account and fetch its metrics, in both Direct and Orchestrated execution modes.",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck",
+    "deploy": "nuxt build && wrangler deploy",
+    "oauth:youtube": "node scripts/get-youtube-token.mjs",
+    "db:local": "wrangler d1 execute AUDIT_DB --local --file=infra/schema.sql",
+    "db:remote": "wrangler d1 execute AUDIT_DB --remote --file=infra/schema.sql"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.9.0",
+    "nuxt": "^4.4.8",
+    "vue": "^3.5.38",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260619.1",
+    "@iconify-json/lucide": "^1.2.114",
+    "@iconify-json/simple-icons": "^1.2.86",
+    "nitro-cloudflare-dev": "^0.2.2",
+    "typescript": "^5.6.0",
+    "vue-tsc": "^2.1.0",
+    "wrangler": "^4.103.0"
+  }
+}

@@ -1,0 +1,30 @@
+# Nuxt / Node
+node_modules
+.nuxt
+.output
+.data
+.nitro
+.cache
+dist
+*.log
+.DS_Store
+
+# Cloudflare / Wrangler local state
+.wrangler
+
+# Secrets (never commit) — see .dev.vars.example
+.dev.vars
+.env
+.env.*
+!.env.example
+
+# Terraform — commit the lock file, ignore state & local dirs & real tfvars
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/crash.log
+infra/*.tfvars
+!infra/*.tfvars.example
+
+# Playwright MCP artifacts
+.playwright-mcp
