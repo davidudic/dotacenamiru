@@ -1,8 +1,8 @@
 {
-  "name": "Marketing Microsite — Orchestrated (YouTube)",
+  "name": "Marketing Microsite — Orchestrated (YouTube + Facebook)",
   "nodes": [
     {
-      "id": "786f9375-de6d-448d-bdd7-da23b5cb5e4d",
+      "id": "6e73baea-afb0-4ef5-ab94-d646aa8350b5",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -17,10 +17,10 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "webhookId": "66119deb-dc37-4e34-9b33-ba33df1cbb9e"
+      "webhookId": "43b4d691-c78e-4c83-adaa-19d3e0da70c1"
     },
     {
-      "id": "a0dca913-44ea-4695-a435-9e2630f9c1b3",
+      "id": "20918eab-eed5-4aed-bdbc-105b9f0f2379",
       "name": "Prep",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -29,12 +29,12 @@
         96
       ],
       "parameters": {
-        "jsCode": "const b = $input.first().json.body;\nif (b.action === 'metrics') {\n  const res = await this.helpers.httpRequest({\n    method: 'GET',\n    url: 'https://www.googleapis.com/youtube/v3/videos',\n    qs: { part: 'statistics,snippet', id: b.contentId },\n    headers: { Authorization: 'Bearer ' + b.accessToken },\n    json: true,\n  });\n  return [{ json: { action: 'metrics', ok: true, raw: res } }];\n}\nconst bytes = Buffer.from(b.mediaBase64, 'base64');\nconst init = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',\n  headers: {\n    Authorization: 'Bearer ' + b.accessToken,\n    'Content-Type': 'application/json; charset=UTF-8',\n    'X-Upload-Content-Type': b.mediaContentType || 'video/mp4',\n    'X-Upload-Content-Length': String(bytes.length),\n  },\n  body: { snippet: { title: b.title, description: b.description || '', categoryId: '22' }, status: { privacyStatus: b.privacy || 'private', selfDeclaredMadeForKids: false } },\n  json: true,\n  returnFullResponse: true,\n});\nconst location = init.headers.location || init.headers.Location;\nconst binaryData = await this.helpers.prepareBinaryData(bytes, 'upload.mp4', b.mediaContentType || 'video/mp4');\nreturn [{ json: { action: 'post', location, contentType: b.mediaContentType || 'video/mp4' }, binary: { data: binaryData } }];"
+        "jsCode": "const b = $input.first().json.body;\n\n// ---------- Facebook ----------\nif (b.platform === 'facebook') {\n  const base = 'https://graph.facebook.com/' + (b.fbApiVersion || 'v25.0');\n  if (b.action === 'metrics') {\n    const res = await this.helpers.httpRequest({\n      method: 'GET',\n      url: base + '/' + b.contentId,\n      qs: {\n        fields: 'created_time,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0),likes.summary(true).limit(0)',\n        access_token: b.fbAccessToken,\n      },\n      json: true,\n    });\n    return [{ json: { _route: 'respond', action: 'metrics', ok: true, raw: res } }];\n  }\n  const message = [b.title, b.description].filter(Boolean).join('\\n\\n');\n  const res = await this.helpers.httpRequest({\n    method: 'POST',\n    url: base + '/' + b.fbPageId + '/feed',\n    qs: { message: message, access_token: b.fbAccessToken },\n    json: true,\n  });\n  const id = res.id;\n  return [{ json: { _route: 'respond', action: 'post', ok: true, contentId: id, contentUrl: 'https://www.facebook.com/' + id, raw: res } }];\n}\n\n// ---------- YouTube ----------\nif (b.action === 'metrics') {\n  const res = await this.helpers.httpRequest({\n    method: 'GET',\n    url: 'https://www.googleapis.com/youtube/v3/videos',\n    qs: { part: 'statistics,snippet', id: b.contentId },\n    headers: { Authorization: 'Bearer ' + b.accessToken },\n    json: true,\n  });\n  return [{ json: { _route: 'respond', action: 'metrics', ok: true, raw: res } }];\n}\nconst bytes = Buffer.from(b.mediaBase64, 'base64');\nconst init = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',\n  headers: {\n    Authorization: 'Bearer ' + b.accessToken,\n    'Content-Type': 'application/json; charset=UTF-8',\n    'X-Upload-Content-Type': b.mediaContentType || 'video/mp4',\n    'X-Upload-Content-Length': String(bytes.length),\n  },\n  body: { snippet: { title: b.title, description: b.description || '', categoryId: '22' }, status: { privacyStatus: b.privacy || 'private', selfDeclaredMadeForKids: false } },\n  json: true,\n  returnFullResponse: true,\n});\nconst location = init.headers.location || init.headers.Location;\nconst binaryData = await this.helpers.prepareBinaryData(bytes, 'upload.mp4', b.mediaContentType || 'video/mp4');\nreturn [{ json: { _route: 'upload', action: 'post', location: location, contentType: b.mediaContentType || 'video/mp4' }, binary: { data: binaryData } }];"
       }
     },
     {
-      "id": "69da2c15-f687-4e5e-b97d-02a2c795aca8",
-      "name": "Is Post",
+      "id": "482ed021-1a93-4fc0-8da2-abd1454a0bcc",
+      "name": "Needs Upload",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
@@ -50,8 +50,8 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.action }}",
-              "rightValue": "post",
+              "leftValue": "={{ $json._route }}",
+              "rightValue": "upload",
               "operator": {
                 "type": "string",
                 "operation": "equals"
@@ -63,7 +63,7 @@
       }
     },
     {
-      "id": "1823d0b7-5dba-48da-b99f-a1dda599bc78",
+      "id": "9cee744e-d4b2-4833-8cbc-648becf6d46d",
       "name": "Upload PUT",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
@@ -91,7 +91,7 @@
       }
     },
     {
-      "id": "7bb1d23f-16a0-455b-98f9-27251434dd5c",
+      "id": "58f36e2c-4733-4822-83c9-6077edeb9259",
       "name": "Format",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -104,7 +104,7 @@
       }
     },
     {
-      "id": "41aa0ced-b044-4cca-80ad-56964a8f1762",
+      "id": "c7d91844-da7d-4845-a965-a7b4e2b5be87",
       "name": "Respond Post",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -119,8 +119,8 @@
       }
     },
     {
-      "id": "310c240b-d2c4-4814-ac89-5515c6d5e439",
-      "name": "Respond Metrics",
+      "id": "d3c950f8-0cdb-4bbb-9db1-79ee87059b2f",
+      "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
@@ -150,14 +150,14 @@
       "main": [
         [
           {
-            "node": "Is Post",
+            "node": "Needs Upload",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Is Post": {
+    "Needs Upload": {
       "main": [
         [
           {
@@ -168,7 +168,7 @@
         ],
         [
           {
-            "node": "Respond Metrics",
+            "node": "Respond",
             "type": "main",
             "index": 0
           }

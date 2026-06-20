@@ -8,11 +8,10 @@ import { getYouTubeAccessToken } from '../utils/youtube-oauth'
  * run by an n8n workflow instead of in-app code. The microsite POSTs to a
  * Header-Auth-protected n8n webhook; n8n talks to the platform and responds.
  *
- * Credential model — token broker: the Worker owns the YouTube refresh token and
- * mints a short-lived access token, which it passes to n8n in the request. n8n
- * therefore needs NO Google OAuth of its own; it just executes the workflow
- * (the HTTP calls to YouTube) using the supplied bearer token. The webhook is
- * protected with Header Auth.
+ * Credential model — token broker: n8n stores NO platform credentials. The
+ * Worker brokers them per request — a short-lived YouTube access token, or the
+ * Facebook Page id + Page token — so n8n just executes the HTTP calls. The
+ * webhook is protected with Header Auth.
  *
  * Contract — n8n "Respond to Webhook" returns JSON:
  *   post:    { ok, action:'post',    contentId, contentUrl, publishedAt, raw }
@@ -60,13 +59,28 @@ async function callN8n(env: AppEnv, payload: Record<string, unknown>): Promise<N
   return env0 ?? {}
 }
 
+/** Per-platform credentials the Worker brokers to n8n (n8n stores none of its own). */
+async function platformAuth(env: AppEnv, platform: Platform): Promise<Record<string, unknown>> {
+  if (platform === 'youtube') {
+    return { accessToken: await getYouTubeAccessToken(env) }
+  }
+  if (platform === 'facebook') {
+    return {
+      fbPageId: env.FACEBOOK_PAGE_ID,
+      fbAccessToken: env.FACEBOOK_PAGE_ACCESS_TOKEN,
+      fbApiVersion: env.FACEBOOK_API_VERSION || 'v25.0',
+    }
+  }
+  return {}
+}
+
 export async function n8nPublish(
   env: AppEnv,
   platform: Platform,
   input: PublishInput,
 ): Promise<PublishResult> {
-  const accessToken = platform === 'youtube' ? await getYouTubeAccessToken(env) : undefined
-  const data = await callN8n(env, { action: 'post', ...input, accessToken })
+  const auth = await platformAuth(env, platform)
+  const data = await callN8n(env, { action: 'post', ...input, ...auth })
   const contentId = data.contentId || data.id
   if (!contentId) throw new Error('Orchestrated post did not return a contentId.')
   return {
@@ -84,8 +98,8 @@ export async function n8nFetchMetrics(
   platform: Platform,
   contentId: string,
 ): Promise<FetchedRaw> {
-  const accessToken = platform === 'youtube' ? await getYouTubeAccessToken(env) : undefined
-  const data = await callN8n(env, { action: 'metrics', platform, contentId, accessToken })
+  const auth = await platformAuth(env, platform)
+  const data = await callN8n(env, { action: 'metrics', platform, contentId, ...auth })
   return {
     raw: data.raw ?? data,
     publishedAt: data.publishedAt,

@@ -2,7 +2,7 @@
 
 A small, deployed microsite that **publishes a post to a controlled business account** and then **fetches and displays metrics** for that content — implemented in **two execution modes** (Direct API + Orchestrated via n8n), deployed with **infrastructure as code**, with **secrets kept out of source**.
 
-> Candidate assignment implementation. Primary platform: **YouTube** (the only option with a fully self-service, no-review path for a single owned account). A **Facebook Pages** adapter is included and ready-to-enable as a second platform.
+> Candidate assignment implementation. Two platforms are fully wired in **both** execution modes: **YouTube** (the no-review, self-service path for a single owned account) and **Facebook Pages** (page feed posts + engagement). The assignment only required one — the adapter layer makes the second nearly free.
 
 ![Microsite screenshot](docs/screenshot.png)
 
@@ -44,7 +44,8 @@ Nitro server routes  (Cloudflare Worker)         ← secrets via env bindings
         │
         └─ n8n (public: n8n Cloud / VPS)  ← workflow committed at orchestration/n8n-workflow.json
               Webhook(HeaderAuth) → Prep(init/metrics) → IF(action) → HTTP Request(binary PUT) → Respond
-              token broker: the Worker passes a short-lived YouTube access token; n8n holds no Google creds
+              routes by platform (YouTube binary upload vs Facebook feed post)
+              token broker: the Worker passes a short-lived YouTube token or the Facebook Page token; n8n stores no platform creds
 ```
 
 ## Tech stack
@@ -64,7 +65,7 @@ server/
   api/config.get.ts        config status for the UI
   api/audit.get.ts         audit log read
   adapters/youtube.ts      DIRECT YouTube: resumable upload + videos.list + normalize
-  adapters/facebook.ts     DIRECT Facebook Pages (ready-to-enable)
+  adapters/facebook.ts     DIRECT Facebook Pages (feed post + engagement)
   adapters/types.ts        PlatformAdapter interface
   orchestration/n8n.ts     ORCHESTRATED client (webhook + Header Auth)
   utils/env.ts             reads secrets/bindings from event.context.cloudflare.env
@@ -182,4 +183,4 @@ npm run deploy        # = nuxt build && wrangler deploy
 - **Workers free plan caps CPU at 10 ms/request.** The only CPU-bound step is base64-decoding the upload — keep test videos small (≈≤2 MB) or use Workers Paid.
 - **YouTube quota:** `videos.insert` costs 1600 units (daily default 10,000) and has short-window rate limits — rapid repeated upload tests can transiently fail with 400; space them out.
 - **Orchestrated binary upload** uses an n8n **HTTP Request node** (its Code node UTF-8-corrupts a raw Buffer body). n8n holds no Google credentials — the Worker brokers a short-lived access token to it.
-- The orchestrated workflow ships with YouTube wired up; the Facebook branch can be added to n8n analogously.
+- Both YouTube and Facebook work in both Direct and Orchestrated modes; the n8n workflow routes by platform (only the YouTube post needs the binary-upload branch).

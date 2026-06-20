@@ -143,6 +143,12 @@ Open the URL and run both modes against your dummy channel. Done — deployment 
 3. Graph API Explorer → grant `pages_show_list`, `pages_manage_posts`, `pages_read_engagement` → `GET /me/accounts` → copy the **Page access token** (exchange for a long-lived one) and the **Page ID**.
 4. Add `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_ACCESS_TOKEN` to `.dev.vars` (and `wrangler secret put` for prod). The **Facebook** tab in the UI lights up.
 
+Facebook works in **both** modes with no extra n8n setup — the committed workflow
+routes by platform (the Worker brokers the Page token to n8n, just like the YouTube
+access token). Note: a token from Graph API Explorer is short-lived (~1–2 h); for a
+durable demo exchange it for a long-lived Page token:
+`GET /oauth/access_token?grant_type=fb_exchange_token&client_id=<app-id>&client_secret=<app-secret>&fb_exchange_token=<short-user-token>` → then `GET /me/accounts` for a non-expiring Page token.
+
 ---
 
 ## Troubleshooting
