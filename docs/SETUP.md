@@ -60,33 +60,43 @@ In the UI (mode **Direct**, platform **YouTube**): add a **small** video (≈≤
 
 Goal: run the same publish/fetch workflow through n8n instead of app code.
 
-### 2a. Start n8n
-```bash
-cd orchestration
-docker compose up -d           # http://localhost:5678  (create the owner account)
-```
-*(or use n8n Cloud — skip Docker.)*
+**Design — token broker:** n8n does **not** hold any Google credentials. The Worker
+owns the YouTube refresh token, mints a short-lived access token, and passes it to
+n8n in the request; n8n just executes the HTTP calls. So the only credential n8n
+needs is a Header Auth secret to protect its webhook. The committed workflow
+(`orchestration/n8n-workflow.json`) is: `Webhook → Prep (init upload / fetch
+metrics) → IF(action) → HTTP Request (binary PUT) → Respond`. The binary video is
+uploaded by a dedicated **HTTP Request node** (n8n's Code node can't send raw
+binary — it UTF-8-corrupts a Buffer body).
 
-### 2b. Make it publicly reachable
-A deployed Worker (Step 3) can't reach `localhost`. Even for local testing the Worker→n8n hop needs a public URL. Easiest:
-```bash
-cloudflared tunnel --url http://localhost:5678      # prints a https://<random>.trycloudflare.com URL
-```
-Set that origin as `WEBHOOK_URL` for n8n (stop/restart compose with `WEBHOOK_URL=https://… docker compose up -d`) so n8n builds correct webhook URLs. *(n8n Cloud is already public — nothing to do.)*
+### 2a. Start n8n (public)
+A deployed Worker can't reach `localhost`, so n8n must be public:
+- **n8n Cloud** (free trial) — public out of the box. Easiest.
+- or self-host (`cd orchestration && docker compose up -d`) behind a public HTTPS
+  origin (e.g. `cloudflared tunnel --url http://localhost:5678`, then set that as
+  `WEBHOOK_URL` for n8n).
 
-### 2c. Import + wire the workflow
-1. n8n → **Workflows → Import from File** → `orchestration/n8n-workflow.json`.
-2. **YouTube OAuth2 credential:** Credentials → New → *YouTube OAuth2 API*. It shows a redirect URL like `https://<n8n-host>/rest/oauth2-credential/callback` — add that URL to your Google OAuth client's **Authorized redirect URIs** (Credentials → your client), then finish the n8n OAuth connect. Attach this credential to the **YouTube Upload** and **YouTube Statistics** nodes.
-3. **Header Auth credential:** Credentials → New → *Header Auth* → name `X-N8N-Auth`, value = a long random string. Attach it to the **Webhook** node.
-4. **Activate** the workflow (toggle, top-right). Copy the **Production** webhook URL (`https://<n8n-host>/webhook/marketing-microsite`).
+### 2b. Import + protect the workflow
+1. n8n → **Import from File** → `orchestration/n8n-workflow.json` (7 nodes).
+2. Open the **Webhook** node → **Header Auth** → **Create new credential**:
+   - Name (header): `X-N8N-Auth`
+   - Value: a long random string (`openssl rand -hex 24`)
+3. **Publish/Activate** the workflow. The production webhook is
+   `https://<n8n-host>/webhook/marketing-microsite`.
 
-### 2d. Configure + test
-Add to `.dev.vars` and restart `npm run dev`:
+> No Google/YouTube credential is configured in n8n — the Worker supplies the token.
+
+### 2c. Configure + test
+Add to `.dev.vars` (local) and as Worker secrets (prod), then restart:
 ```
 N8N_WEBHOOK_URL=https://<n8n-host>/webhook/marketing-microsite
 N8N_WEBHOOK_TOKEN=<the X-N8N-Auth value>
 ```
-In the UI switch mode to **Orchestrated** and run Publish / Fetch. Results show **via orchestrated**.
+In the UI switch mode to **Orchestrated** and run Publish / Fetch — results show **via orchestrated**.
+
+> Tip: YouTube `videos.insert` costs **1600 quota units** (daily default 10,000) and
+> has short-window rate limits. Rapid repeated upload tests can transiently 400 —
+> space them out.
 
 ---
 

@@ -1,11 +1,18 @@
 import type { Platform, PublishInput, PublishResult } from '#shared/types'
 import type { FetchedRaw } from '../adapters/types'
 import type { AppEnv } from '../utils/env'
+import { getYouTubeAccessToken } from '../utils/youtube-oauth'
 
 /**
  * Orchestrated execution path. The same workflow (publish / fetch metrics) is
  * run by an n8n workflow instead of in-app code. The microsite POSTs to a
  * Header-Auth-protected n8n webhook; n8n talks to the platform and responds.
+ *
+ * Credential model — token broker: the Worker owns the YouTube refresh token and
+ * mints a short-lived access token, which it passes to n8n in the request. n8n
+ * therefore needs NO Google OAuth of its own; it just executes the workflow
+ * (the HTTP calls to YouTube) using the supplied bearer token. The webhook is
+ * protected with Header Auth.
  *
  * Contract — n8n "Respond to Webhook" returns JSON:
  *   post:    { ok, action:'post',    contentId, contentUrl, publishedAt, raw }
@@ -58,7 +65,8 @@ export async function n8nPublish(
   platform: Platform,
   input: PublishInput,
 ): Promise<PublishResult> {
-  const data = await callN8n(env, { action: 'post', ...input })
+  const accessToken = platform === 'youtube' ? await getYouTubeAccessToken(env) : undefined
+  const data = await callN8n(env, { action: 'post', ...input, accessToken })
   const contentId = data.contentId || data.id
   if (!contentId) throw new Error('Orchestrated post did not return a contentId.')
   return {
@@ -76,7 +84,8 @@ export async function n8nFetchMetrics(
   platform: Platform,
   contentId: string,
 ): Promise<FetchedRaw> {
-  const data = await callN8n(env, { action: 'metrics', platform, contentId })
+  const accessToken = platform === 'youtube' ? await getYouTubeAccessToken(env) : undefined
+  const data = await callN8n(env, { action: 'metrics', platform, contentId, accessToken })
   return {
     raw: data.raw ?? data,
     publishedAt: data.publishedAt,

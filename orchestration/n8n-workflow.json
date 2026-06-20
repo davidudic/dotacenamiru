@@ -2,6 +2,14 @@
   "name": "Marketing Microsite — Orchestrated (YouTube)",
   "nodes": [
     {
+      "id": "786f9375-de6d-448d-bdd7-da23b5cb5e4d",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        96
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "marketing-microsite",
@@ -9,149 +17,189 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "f1a00000-0000-4000-8000-000000000001",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [-200, 300],
-      "webhookId": "marketing-microsite",
-      "credentials": {
-        "httpHeaderAuth": { "id": "REPLACE_HEADER_AUTH_CRED_ID", "name": "Microsite Header Auth (X-N8N-Auth)" }
-      },
-      "notes": "Header Auth credential must use header name 'X-N8N-Auth'. Use the PRODUCTION webhook URL: https://<host>/webhook/marketing-microsite"
+      "webhookId": "66119deb-dc37-4e34-9b33-ba33df1cbb9e"
     },
     {
+      "id": "a0dca913-44ea-4695-a435-9e2630f9c1b3",
+      "name": "Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        96
+      ],
       "parameters": {
-        "rules": {
-          "values": [
+        "jsCode": "const b = $input.first().json.body;\nif (b.action === 'metrics') {\n  const res = await this.helpers.httpRequest({\n    method: 'GET',\n    url: 'https://www.googleapis.com/youtube/v3/videos',\n    qs: { part: 'statistics,snippet', id: b.contentId },\n    headers: { Authorization: 'Bearer ' + b.accessToken },\n    json: true,\n  });\n  return [{ json: { action: 'metrics', ok: true, raw: res } }];\n}\nconst bytes = Buffer.from(b.mediaBase64, 'base64');\nconst init = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',\n  headers: {\n    Authorization: 'Bearer ' + b.accessToken,\n    'Content-Type': 'application/json; charset=UTF-8',\n    'X-Upload-Content-Type': b.mediaContentType || 'video/mp4',\n    'X-Upload-Content-Length': String(bytes.length),\n  },\n  body: { snippet: { title: b.title, description: b.description || '', categoryId: '22' }, status: { privacyStatus: b.privacy || 'private', selfDeclaredMadeForKids: false } },\n  json: true,\n  returnFullResponse: true,\n});\nconst location = init.headers.location || init.headers.Location;\nconst binaryData = await this.helpers.prepareBinaryData(bytes, 'upload.mp4', b.mediaContentType || 'video/mp4');\nreturn [{ json: { action: 'post', location, contentType: b.mediaContentType || 'video/mp4' }, binary: { data: binaryData } }];"
+      }
+    },
+    {
+      "id": "69da2c15-f687-4e5e-b97d-02a2c795aca8",
+      "name": "Is Post",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
             {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict" },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.body.action }}",
-                    "rightValue": "post",
-                    "operator": { "type": "string", "operation": "equals" }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "outputKey": "post"
-            },
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "post",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "1823d0b7-5dba-48da-b99f-a1dda599bc78",
+      "name": "Upload PUT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.location }}",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
             {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict" },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.body.action }}",
-                    "rightValue": "metrics",
-                    "operator": { "type": "string", "operation": "equals" }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "outputKey": "metrics"
+              "name": "Content-Type",
+              "value": "={{ $json.contentType }}"
             }
           ]
         },
         "options": {}
-      },
-      "id": "f1a00000-0000-4000-8000-000000000002",
-      "name": "Switch action",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
-      "position": [40, 300]
+      }
     },
     {
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "// Decode the base64 video from the webhook body into n8n binary data\nconst body = $input.first().json.body;\nconst mime = body.mediaContentType || 'video/mp4';\nconst buffer = Buffer.from(body.mediaBase64, 'base64');\nconst binaryData = await this.helpers.prepareBinaryData(buffer, 'upload.mp4', mime);\nreturn [{ json: body, binary: { data: binaryData } }];"
-      },
-      "id": "f1a00000-0000-4000-8000-000000000003",
-      "name": "Base64 -> Binary",
+      "id": "7bb1d23f-16a0-455b-98f9-27251434dd5c",
+      "name": "Format",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [280, 180]
-    },
-    {
+      "position": [
+        896,
+        0
+      ],
       "parameters": {
-        "resource": "video",
-        "operation": "upload",
-        "title": "={{ $json.title }}",
-        "categoryId": "22",
-        "binaryProperty": "data",
-        "options": {
-          "description": "={{ $json.description }}",
-          "privacyStatus": "={{ $json.privacy || 'private' }}"
-        }
-      },
-      "id": "f1a00000-0000-4000-8000-000000000004",
-      "name": "YouTube Upload",
-      "type": "n8n-nodes-base.youTube",
-      "typeVersion": 1,
-      "position": [520, 180],
-      "credentials": {
-        "youTubeOAuth2Api": { "id": "REPLACE_YOUTUBE_OAUTH_CRED_ID", "name": "YouTube account" }
+        "jsCode": "const v = $input.first().json;\nreturn [{ json: { ok: true, action: 'post', contentId: v.id, contentUrl: 'https://www.youtube.com/watch?v=' + v.id, publishedAt: v.snippet && v.snippet.publishedAt, raw: { id: v.id, status: v.status } } }];"
       }
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { \"ok\": true, \"action\": \"post\", \"contentId\": $json.id, \"contentUrl\": \"https://www.youtube.com/watch?v=\" + $json.id, \"publishedAt\": ($json.snippet ? $json.snippet.publishedAt : null), \"raw\": $json } }}",
-        "options": {}
-      },
-      "id": "f1a00000-0000-4000-8000-000000000005",
+      "id": "41aa0ced-b044-4cca-80ad-56964a8f1762",
       "name": "Respond Post",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [760, 180]
-    },
-    {
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        0
+      ],
       "parameters": {
-        "method": "GET",
-        "url": "=https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={{ $json.body.contentId }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "youTubeOAuth2Api",
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
         "options": {}
-      },
-      "id": "f1a00000-0000-4000-8000-000000000006",
-      "name": "YouTube Statistics",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [280, 420],
-      "credentials": {
-        "youTubeOAuth2Api": { "id": "REPLACE_YOUTUBE_OAUTH_CRED_ID", "name": "YouTube account" }
       }
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { \"ok\": true, \"action\": \"metrics\", \"raw\": $json } }}",
-        "options": {}
-      },
-      "id": "f1a00000-0000-4000-8000-000000000007",
+      "id": "310c240b-d2c4-4814-ac89-5515c6d5e439",
       "name": "Respond Metrics",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [520, 420]
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Switch action", "type": "main", "index": 0 }]] },
-    "Switch action": {
+    "Webhook": {
       "main": [
-        [{ "node": "Base64 -> Binary", "type": "main", "index": 0 }],
-        [{ "node": "YouTube Statistics", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Base64 -> Binary": { "main": [[{ "node": "YouTube Upload", "type": "main", "index": 0 }]] },
-    "YouTube Upload": { "main": [[{ "node": "Respond Post", "type": "main", "index": 0 }]] },
-    "YouTube Statistics": { "main": [[{ "node": "Respond Metrics", "type": "main", "index": 0 }]] }
+    "Prep": {
+      "main": [
+        [
+          {
+            "node": "Is Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Post": {
+      "main": [
+        [
+          {
+            "node": "Upload PUT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload PUT": {
+      "main": [
+        [
+          {
+            "node": "Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format": {
+      "main": [
+        [
+          {
+            "node": "Respond Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "active": false,
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "marketing-microsite" }],
-  "meta": {
-    "description": "Orchestrated path for the Marketing Microsite. POST {action:'post'|'metrics', ...} to the Header-Auth webhook. After import: (1) create an HTTP Header Auth credential with header 'X-N8N-Auth' and attach it to the Webhook node; (2) create a YouTube OAuth2 credential and attach it to 'YouTube Upload' and 'YouTube Statistics'; (3) activate the workflow and use the PRODUCTION webhook URL."
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
   }
 }

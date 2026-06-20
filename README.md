@@ -43,7 +43,8 @@ Nitro server routes  (Cloudflare Worker)         ← secrets via env bindings
   └─ D1  AUDIT_DB      append-only audit log
         │
         └─ n8n (public: n8n Cloud / VPS)  ← workflow committed at orchestration/n8n-workflow.json
-              Webhook(HeaderAuth) → Switch(action) → YouTube upload / HTTP statistics → Respond
+              Webhook(HeaderAuth) → Prep(init/metrics) → IF(action) → HTTP Request(binary PUT) → Respond
+              token broker: the Worker passes a short-lived YouTube access token; n8n holds no Google creds
 ```
 
 ## Tech stack
@@ -179,4 +180,6 @@ npm run deploy        # = nuxt build && wrangler deploy
 
 - **YouTube uploads from an unverified app are forced to `private`.** Metrics (`statistics`) still return real numbers (you can like/comment your own video); flip visibility in YouTube Studio if you want public view accrual.
 - **Workers free plan caps CPU at 10 ms/request.** The only CPU-bound step is base64-decoding the upload — keep test videos small (≈≤2 MB) or use Workers Paid.
+- **YouTube quota:** `videos.insert` costs 1600 units (daily default 10,000) and has short-window rate limits — rapid repeated upload tests can transiently fail with 400; space them out.
+- **Orchestrated binary upload** uses an n8n **HTTP Request node** (its Code node UTF-8-corrupts a raw Buffer body). n8n holds no Google credentials — the Worker brokers a short-lived access token to it.
 - The orchestrated workflow ships with YouTube wired up; the Facebook branch can be added to n8n analogously.
