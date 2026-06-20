@@ -4,6 +4,7 @@ import type {
   ConfigStatus,
   ExecutionMode,
   MetricsRequest,
+  MetricValues,
   NormalizedMetrics,
   Platform,
   PostRequest,
@@ -40,6 +41,10 @@ const posting = ref(false)
 const fetching = ref(false)
 const audit = ref<AuditEntry[]>([])
 
+interface ModeOutcome { metrics?: MetricValues, ms?: number, error?: string }
+const comparing = ref(false)
+const compareResult = ref<{ direct: ModeOutcome, orchestrated: ModeOutcome, identical: boolean | null } | null>(null)
+
 const activePlatform = computed(() => platforms.find(p => p.value === platform.value)!)
 const connected = computed(() => {
   if (!config.value) return false
@@ -48,14 +53,12 @@ const connected = computed(() => {
     : config.value.orchestrationConfigured
 })
 
-function notifyError(e: unknown) {
+function errMsg(e: unknown): string {
   const err = e as { data?: { statusMessage?: string }, statusMessage?: string, message?: string }
-  toast.add({
-    title: 'Couldn’t complete that',
-    description: err?.data?.statusMessage || err?.statusMessage || err?.message || 'Request failed',
-    color: 'error',
-    icon: 'i-lucide-circle-alert',
-  })
+  return err?.data?.statusMessage || err?.statusMessage || err?.message || 'Request failed'
+}
+function notifyError(e: unknown) {
+  toast.add({ title: 'Couldn’t complete that', description: errMsg(e), color: 'error', icon: 'i-lucide-circle-alert' })
 }
 
 async function loadConfig() {
@@ -150,22 +153,52 @@ async function doFetchMetrics() {
   }
 }
 
-const metricRows = computed(() => {
-  const m = (metrics.value?.metrics ?? {}) as Record<string, number | undefined>
-  const labels: Record<string, string> = {
-    views: 'Views',
-    likes: 'Likes',
-    comments: 'Comments',
-    shares: 'Shares',
-    impressions: 'Impressions',
-    engagements: 'Engagement',
-    clicks: 'Clicks',
-    saves: 'Saves',
+async function runMode(m: ExecutionMode, id: string): Promise<ModeOutcome> {
+  const t = performance.now()
+  try {
+    const body: MetricsRequest = { platform: platform.value, mode: m, contentId: id, publishedAt: postResult.value?.publishedAt, contentUrl: postResult.value?.contentUrl }
+    const res = await $fetch<NormalizedMetrics>('/api/metrics', { method: 'POST', body })
+    return { metrics: res.metrics, ms: Math.round(performance.now() - t) }
   }
-  return Object.entries(labels)
-    .filter(([k]) => m[k] !== undefined)
-    .map(([k, label]) => ({ label, value: m[k] as number }))
-})
+  catch (e) {
+    return { error: errMsg(e) }
+  }
+}
+
+async function compareModes() {
+  const id = parseContentId(contentId.value, platform.value)
+  if (!id) { notifyError(new Error('Paste a video ID or a URL first.')); return }
+  contentId.value = id
+  comparing.value = true
+  compareResult.value = null
+  try {
+    const [direct, orchestrated] = await Promise.all([runMode('direct', id), runMode('orchestrated', id)])
+    const identical = direct.metrics && orchestrated.metrics
+      ? JSON.stringify(direct.metrics) === JSON.stringify(orchestrated.metrics)
+      : null
+    compareResult.value = { direct, orchestrated, identical }
+  }
+  finally {
+    comparing.value = false
+    loadAudit()
+  }
+}
+
+const METRIC_LABELS: Record<string, string> = {
+  views: 'Views',
+  likes: 'Likes',
+  comments: 'Comments',
+  shares: 'Shares',
+  impressions: 'Impressions',
+  engagements: 'Engagement',
+  clicks: 'Clicks',
+  saves: 'Saves',
+}
+function toRows(m?: MetricValues) {
+  const v = (m ?? {}) as Record<string, number | undefined>
+  return Object.entries(METRIC_LABELS).filter(([k]) => v[k] !== undefined).map(([k, label]) => ({ label, value: v[k] as number }))
+}
+const metricRows = computed(() => toRows(metrics.value?.metrics))
 
 function fmt(ts?: string): string {
   if (!ts) return '—'
@@ -177,27 +210,6 @@ function pretty(v: unknown): string {
 }
 function modeColor(m: ExecutionMode): 'primary' | 'secondary' {
   return m === 'direct' ? 'primary' : 'secondary'
-}
-
-/** Accept a full URL or a raw ID and return the content ID. */
-function parseContentId(raw: string, p: Platform): string {
-  const s = raw.trim()
-  if (!s) return s
-  if (p === 'youtube') {
-    const short = s.match(/youtu\.be\/([\w-]{6,})/)
-    if (short?.[1]) return short[1]
-    const v = s.match(/[?&]v=([\w-]{6,})/)
-    if (v?.[1]) return v[1]
-    const path = s.match(/youtube\.com\/(?:shorts|embed|live)\/([\w-]{6,})/)
-    if (path?.[1]) return path[1]
-  }
-  else {
-    const posts = s.match(/\/posts\/(\w+)/)
-    if (posts?.[1]) return posts[1]
-    const story = s.match(/story_fbid=(\d+)/)
-    if (story?.[1]) return story[1]
-  }
-  return s
 }
 
 onMounted(() => {
@@ -342,6 +354,16 @@ onMounted(() => {
                 >
                   {{ metrics ? 'Refresh' : 'Fetch' }}
                 </UButton>
+                <UButton
+                  size="sm"
+                  variant="outline"
+                  color="neutral"
+                  icon="i-lucide-columns-2"
+                  :loading="comparing"
+                  @click="compareModes"
+                >
+                  Compare
+                </UButton>
               </div>
             </div>
           </template>
@@ -405,8 +427,52 @@ onMounted(() => {
             </details>
           </div>
 
+          <!-- compare modes -->
+          <div v-if="compareResult" class="mt-4">
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
+              <UBadge v-if="compareResult.identical === true" color="success" variant="subtle" icon="i-lucide-check">
+                Metrics match across modes
+              </UBadge>
+              <UBadge v-else-if="compareResult.identical === false" color="error" variant="subtle">
+                Metrics differ
+              </UBadge>
+              <UBadge v-else color="neutral" variant="subtle">
+                Couldn’t compare
+              </UBadge>
+              <span class="text-xs text-(--ui-text-muted)">same content, both paths</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div
+                v-for="col in ([{ key: 'direct', label: 'Direct', color: 'primary' }, { key: 'orchestrated', label: 'Orchestrated', color: 'secondary' }] as const)"
+                :key="col.key"
+                class="rounded-lg border border-(--ui-border) p-3"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <UBadge :color="col.color" variant="subtle">
+                    {{ col.label }}
+                  </UBadge>
+                  <span v-if="compareResult[col.key].ms != null" class="text-xs text-(--ui-text-muted) tabular-nums">
+                    {{ compareResult[col.key].ms }} ms
+                  </span>
+                </div>
+                <template v-if="compareResult[col.key].metrics">
+                  <div v-for="row in toRows(compareResult[col.key].metrics)" :key="row.label" class="flex justify-between text-sm py-0.5">
+                    <span class="text-(--ui-text-muted)">{{ row.label }}</span>
+                    <span class="font-semibold tabular-nums">{{ row.value.toLocaleString() }}</span>
+                  </div>
+                  <p v-if="!toRows(compareResult[col.key].metrics).length" class="text-xs text-(--ui-text-muted)">
+                    no numeric metrics
+                  </p>
+                </template>
+                <p v-else class="text-xs text-error">
+                  {{ compareResult[col.key].error }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- empty state -->
-          <div v-else-if="!postResult" class="text-center py-10">
+          <div v-if="!metrics && !compareResult && !postResult" class="text-center py-10">
             <UIcon name="i-lucide-chart-no-axes-column" class="size-8 text-(--ui-text-dimmed) mx-auto" />
             <p class="text-sm text-(--ui-text-muted) mt-2">
               Publish or look up content to see metrics.

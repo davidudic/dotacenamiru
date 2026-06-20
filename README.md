@@ -1,5 +1,7 @@
 # Marketing Microsite
 
+[![CI](https://github.com/davidudic/dotacenamiru/actions/workflows/ci.yml/badge.svg)](https://github.com/davidudic/dotacenamiru/actions/workflows/ci.yml)
+
 A small, deployed microsite that **publishes a post to a controlled business account** and then **fetches and displays metrics** for that content — implemented in **two execution modes** (Direct API + Orchestrated via n8n), deployed with **infrastructure as code**, with **secrets kept out of source**.
 
 > Candidate assignment implementation. Two platforms are fully wired in **both** execution modes: **YouTube** (the no-review, self-service path for a single owned account) and **Facebook Pages** (page feed posts + engagement). The assignment only required one — the adapter layer makes the second nearly free.
@@ -115,6 +117,16 @@ npm run dev                         # http://localhost:3000
 
 ## Deploy (infrastructure as code)
 
+**One command** (provisions KV + D1, wires the ids into `wrangler.toml`, applies the D1 schema, pushes secrets from `.dev.vars`, builds and deploys):
+
+```bash
+export CLOUDFLARE_API_TOKEN=…
+export CLOUDFLARE_ACCOUNT_ID=…
+./scripts/deploy.sh
+```
+
+<details><summary>…or the equivalent steps by hand</summary>
+
 ```bash
 # 1. Provision durable resources (KV + D1)
 export TF_VAR_cloudflare_api_token=…
@@ -140,7 +152,9 @@ npx wrangler secret put N8N_WEBHOOK_TOKEN
 npm run deploy        # = nuxt build && wrangler deploy
 ```
 
-**Why this split?** Nitro's `cloudflare_module` output is a multi-chunk bundle that Wrangler understands natively, so Wrangler deploys the Worker while Terraform owns the durable resources (KV/D1). This is more robust than forcing the script through Terraform.
+</details>
+
+**Why this split?** Nitro's `cloudflare_module` output is a multi-chunk bundle that Wrangler understands natively, so Wrangler deploys the Worker while OpenTofu owns the durable resources (KV/D1). This is more robust than forcing the script through OpenTofu.
 
 ## Secrets handling
 
@@ -176,6 +190,16 @@ npm run deploy        # = nuxt build && wrangler deploy
 - [x] Raw-response viewer (collapsible JSON under the metrics).
 - [x] Audit log of requests and results (D1 + audit table in the UI).
 - [x] Refresh action for metrics.
+
+## Beyond the brief
+
+- **Compare modes** — one click fetches metrics through *both* Direct and Orchestrated and shows them side by side with per-path latency and an identical-or-not verdict, visually proving the normalized-across-modes claim.
+
+  ![Compare modes](docs/compare.png)
+
+- **Tests + CI** — `vitest` unit tests for the metric normalizers, adapter config and the URL/ID parser, run on every push by GitHub Actions (`typecheck` + `test` + `build`).
+- **One-command deploy** — `./scripts/deploy.sh` reproduces the full deployment (OpenTofu → wrangler) end to end.
+- **Two platforms in both modes** — the assignment asked for one; the adapter layer made YouTube *and* Facebook nearly free.
 
 ## Notes & limitations
 

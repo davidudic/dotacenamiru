@@ -19,6 +19,7 @@ resource "cloudflare_workers_kv_namespace" "token_cache" {
 }
 
 resource "cloudflare_d1_database" "audit" {
-  account_id = var.cloudflare_account_id
-  name       = "${var.name_prefix}-audit"
+  account_id       = var.cloudflare_account_id
+  name             = "${var.name_prefix}-audit"
+  read_replication = { mode = "auto" }
 }

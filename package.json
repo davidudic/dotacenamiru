@@ -9,6 +9,8 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "deploy": "nuxt build && wrangler deploy",
     "oauth:youtube": "node scripts/get-youtube-token.mjs",
     "db:local": "wrangler d1 execute AUDIT_DB --local --file=infra/schema.sql",
@@ -26,6 +28,7 @@
     "@iconify-json/simple-icons": "^1.2.86",
     "nitro-cloudflare-dev": "^0.2.2",
     "typescript": "^5.6.0",
+    "vitest": "^4.1.9",
     "vue-tsc": "^2.1.0",
     "wrangler": "^4.103.0"
   }
