@@ -129,11 +129,13 @@ async function doPost() {
 async function doFetchMetrics() {
   fetching.value = true
   try {
-    if (!contentId.value) throw new Error('Nothing to look up yet.')
+    const id = parseContentId(contentId.value, platform.value)
+    if (!id) throw new Error('Paste a video ID or a YouTube URL first.')
+    contentId.value = id // reflect the extracted ID back into the field
     const body: MetricsRequest = {
       platform: platform.value,
       mode: mode.value,
-      contentId: contentId.value,
+      contentId: id,
       publishedAt: postResult.value?.publishedAt,
       contentUrl: postResult.value?.contentUrl,
     }
@@ -175,6 +177,27 @@ function pretty(v: unknown): string {
 }
 function modeColor(m: ExecutionMode): 'primary' | 'secondary' {
   return m === 'direct' ? 'primary' : 'secondary'
+}
+
+/** Accept a full URL or a raw ID and return the content ID. */
+function parseContentId(raw: string, p: Platform): string {
+  const s = raw.trim()
+  if (!s) return s
+  if (p === 'youtube') {
+    const short = s.match(/youtu\.be\/([\w-]{6,})/)
+    if (short?.[1]) return short[1]
+    const v = s.match(/[?&]v=([\w-]{6,})/)
+    if (v?.[1]) return v[1]
+    const path = s.match(/youtube\.com\/(?:shorts|embed|live)\/([\w-]{6,})/)
+    if (path?.[1]) return path[1]
+  }
+  else {
+    const posts = s.match(/\/posts\/(\w+)/)
+    if (posts?.[1]) return posts[1]
+    const story = s.match(/story_fbid=(\d+)/)
+    if (story?.[1]) return story[1]
+  }
+  return s
 }
 
 onMounted(() => {
@@ -306,8 +329,8 @@ onMounted(() => {
                 <UInput
                   v-model="contentId"
                   size="sm"
-                  class="w-36 font-mono"
-                  :placeholder="platform === 'youtube' ? 'video id' : 'post id'"
+                  class="w-56 font-mono"
+                  :placeholder="platform === 'youtube' ? 'video ID or YouTube URL' : 'post ID or URL'"
                 />
                 <UButton
                   size="sm"
